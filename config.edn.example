@@ -1,0 +1,4 @@
+{:neckar-url "https://snapshot.neckar.suprematic.team/"
+ :role {:name "neckar-robot-snapshot"
+        :role_id "<REDACTED>"
+        :secret_id "<REDACTED>"}}
