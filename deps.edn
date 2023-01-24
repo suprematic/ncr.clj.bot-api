@@ -2,7 +2,8 @@
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
         http-kit/http-kit {:mvn/version "2.6.0"}
         com.taoensso/timbre {:mvn/version "6.0.4"}
-        cheshire/cheshire {:mvn/version "5.11.0"}}
+        cheshire/cheshire {:mvn/version "5.11.0"}
+        com.cognitect/transit-clj {:mvn/version "1.0.329"}}
  :aliases
  {:test
   {:extra-paths ["test"]

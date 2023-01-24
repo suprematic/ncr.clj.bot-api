@@ -1,9 +1,10 @@
 (ns ncr.clj.bot-api
   (:require
     [clojure.string :as str]
+    [clojure.java.io :as io]
+    [cognitect.transit :as transit]
     [org.httpkit.client :as http]
     [taoensso.timbre :as log]
-    [clojure.java.io :as io]
     [cheshire.core :as json]))
 
 (def ^:private DEFAULTS
@@ -84,6 +85,19 @@
     {:method :post
      :headers {"authorization" (str "Bearer " (oidc-token client))}
      :body {:query query :variables vars}}))
+
+(defn transit< [in]
+  (let [in (java.io.ByteArrayInputStream. (.getBytes in))]
+    (transit/read (transit/reader in :json))))
+
+(defn transit> [in]
+  (let
+    [out (java.io.ByteArrayOutputStream.)
+     writer (transit/writer out :json)]
+    (transit/write writer in)
+    (.toString out)))
+
+#_(transit< (transit> [:a :b]))
 
 (comment
   (def ncr
