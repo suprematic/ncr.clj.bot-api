@@ -1,5 +1,8 @@
 # Neckar high-level API for bots in Clojure
 
+
+[![Clojars Project](https://img.shields.io/clojars/v/io.github.suprematic/ncr.clj.bot-api.svg)](https://clojars.org/io.github.suprematic/ncr.clj.bot-api)
+
 FIXME: my new library.
 
 ## Usage
