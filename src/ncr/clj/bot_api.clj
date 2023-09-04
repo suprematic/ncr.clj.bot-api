@@ -24,12 +24,6 @@
      }
    }")
 
-(defn login-into [client cluster]
-  (let [resp (graphql ncr Q_ENUMERATE_ROBOTS {:cluster cluster})
-        [{:keys [subject]} :as robots] (get-in resp [:data :robots_enumerate])]
-    (assert (= 1 (count robots)))
-    (login-as client {:subject subject})))
-
 (defn- cache-set
   ([c k v] (cache-set c k v nil))
   ([cache k v expire]
@@ -104,6 +98,12 @@
       {:method :post
        :headers headers
        :body {:query query :variables vars}})))
+
+(defn login-into [client cluster]
+  (let [resp (graphql client Q_ENUMERATE_ROBOTS {:cluster cluster})
+        [{:keys [subject]} :as robots] (get-in resp [:data :robots_enumerate])]
+    (assert (= 1 (count robots)))
+    (login-as client {:subject subject})))
 
 (defn transit< [in]
   (let [in (java.io.ByteArrayInputStream. (.getBytes in))]
