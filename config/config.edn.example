@@ -1,0 +1,5 @@
+{:neckar-url "https://snapshot.neckar.suprematic.team/"
+ :auth {:realm "https://login.neckar.io/realms/neckar-snapshot/"
+        :client-id "neckar-robots"
+        :username "<REDACTED>"
+        :password "<REDACTED>"}}

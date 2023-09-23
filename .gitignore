@@ -25,5 +25,5 @@
 /checkouts
 /classes
 /target
-/config.edn
+/config/*.edn
 /.clojars-credentials

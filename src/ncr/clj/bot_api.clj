@@ -8,21 +8,13 @@
     [cheshire.core :as json]))
 
 (def ^:private DEFAULTS
-  {:vault-url "https://vault.suprematic.team/"
-   :neckar-url "https://app.neckar.io/"})
+  {:neckar-url "https://app.neckar.io/"})
 
 (defn make-client [cfg]
   {:cfg (merge DEFAULTS cfg) :cache (atom {})})
 
-(defn login-as [client {:keys [subject]}]
-  (assoc client :subject subject))
-
-(def Q_ENUMERATE_ROBOTS
-  "query($cluster: String) {
-     robots_enumerate(clusterSlug: $cluster) {
-       id, name, subject, active
-     }
-   }")
+(defn login-into [client cluster]
+  (assoc client :cluster cluster))
 
 (defn- cache-set
   ([c k v] (cache-set c k v nil))
@@ -44,11 +36,12 @@
   (reset! cache {}))
 
 (defn- http-req [base path opts]
-  (let [url (.toString (java.net.URL. (java.net.URL. base) path))
-        opts (-> {:method :get :url url :timeout 5000}
-               (merge opts)
-               (update :headers merge {"content-type" "application/json"})
-               (update :body #(when % (json/generate-string %))))
+  (let [url (.toString (cond-> (java.net.URL. base) path (java.net.URL. path)))
+        opts (cond-> (merge {:method :get :url url :timeout 5000} opts)
+               (:body opts)
+               (->
+                 (update :headers merge {"content-type" "application/json"})
+                 (update :body #(when % (json/generate-string %)))))
         {:keys [error body status]} @(http/request opts)]
     (cond
       error
@@ -60,7 +53,9 @@
       :else
       (json/parse-string body true))))
 
-(defn vault-token [{:keys [cfg cache] :as client}]
+(defn ^{:deprecated "0.2"} vault-token
+  "Deprecated"
+  [{:keys [cfg cache] :as client}]
   (or
     (cache-get cache :vault-token)
     (let [_ (log/debug "vault token: authenticating") 
@@ -76,9 +71,11 @@
         (.plusSeconds now (/ lease_duration 2)))
       client_token)))
 
-(defn oidc-token [{:keys [cfg cache] :as client}]
+(defn ^{:deprecated "0.2"} vault-oidc-token
+  "Deprecated"
+  [{:keys [cfg cache] :as client}]
   (or
-    (cache-get cache :oidc)
+    (cache-get cache :vault-oidc)
     (let [now (java.time.Instant/now)
           vtoken (vault-token client)
           _ (log/debug "vault oidc requesting") 
@@ -87,23 +84,48 @@
                   {:headers {"x-vault-token" vtoken}})
           {:keys [ttl token]} (:data voidc)]
       (log/info "vault oidc acquired")
-      (cache-set cache :oidc token (.plusSeconds now (/ ttl 2)))
+      (cache-set cache :vault-oidc token (.plusSeconds now (/ ttl 2)))
       token)))
 
-(defn graphql [{:keys [subject] :as client} query & [vars]]
+(defn oidc-config [{:keys [cfg cache] :as client}]
+  (or
+    (cache-get cache :oidc-config)
+    (let [_ (log/debug "oidc-config: requesting") 
+          realm (get-in cfg [:auth :realm])
+          now (java.time.Instant/now)
+          oidc-cfg (http-req realm ".well-known/openid-configuration"
+                     {:method :get})]
+      (log/info "oidc-config: acquired")
+      (cache-set cache :oidc-config oidc-cfg (.plusSeconds now 3600))
+      oidc-cfg)))
+
+(defn oidc-token [{:keys [cfg cache] :as client}]
+  (or
+    (cache-get cache :oidc)
+    (let [now (java.time.Instant/now)
+          {:keys [token_endpoint]} (oidc-config client)
+          {:keys [client-id username password]} (:auth cfg)
+          _ (log/debug "oidc-token: requesting") 
+          {:keys [access_token expires_in]}
+          (http-req token_endpoint nil
+            {:method :post
+             :form-params {:client_id client-id
+                           :grant_type "password"
+                           :username username
+                           :password password}})]
+      (log/info "oidc-token: acquired, expires_in:" expires_in)
+      (cache-set cache :oidc access_token
+        (.plusSeconds now (long (* expires_in 4/5))))
+      access_token)))
+
+(defn graphql [{:keys [cluster] :as client} query & [vars]]
   (let [headers
         (cond-> {"authorization" (str "Bearer " (oidc-token client))}
-          subject (assoc "X-Ncr-Account" subject))]
+          cluster (assoc "X-Ncr-Cluster-Slug" cluster))]
     (http-req (get-in client [:cfg :neckar-url]) "/api/graphql"
       {:method :post
        :headers headers
        :body {:query query :variables vars}})))
-
-(defn login-into [client cluster]
-  (let [resp (graphql client Q_ENUMERATE_ROBOTS {:cluster cluster})
-        [{:keys [subject]} :as robots] (get-in resp [:data :robots_enumerate])]
-    (assert (= 1 (count robots)))
-    (login-as client {:subject subject})))
 
 (defn transit< [in]
   (let [in (java.io.ByteArrayInputStream. (.getBytes in))]
@@ -120,10 +142,17 @@
 
 (comment
   (def ncr
-    (-> "config.edn" slurp read-string make-client))
+    (-> "config/config.edn" slurp read-string make-client))
 
   (def ncr
-    (-> "mail-import.dev.edn" slurp read-string make-client))
+    (-> "config/mail-import.dev.edn" slurp read-string make-client))
+
+  (def ncr
+    (-> "config/probebot.dev.edn" slurp read-string make-client))
+
+  (oidc-config ncr)
+
+  (cache-flush (:cache ncr))
 
   (oidc-token ncr)
 
@@ -149,4 +178,5 @@
     (get-in [:data :profile_account_read])
     transit<)
 
+  ;;
   )
