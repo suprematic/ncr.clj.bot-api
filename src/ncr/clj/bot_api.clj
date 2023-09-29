@@ -111,12 +111,19 @@
             {:method :post
              :form-params {:client_id client-id
                            :grant_type "password"
+                           :scope "openid email profile"
                            :username username
                            :password password}})]
       (log/info "oidc-token: acquired, expires_in:" expires_in)
       (cache-set cache :oidc access_token
         (.plusSeconds now (long (* expires_in 4/5))))
       access_token)))
+
+(defn fetch-userinfo [{:keys [cfg cache] :as client}]
+  (let [{:keys [userinfo_endpoint]} (oidc-config client)
+        token (oidc-token client)]
+    (http-req userinfo_endpoint nil
+      {:oauth-token token})))
 
 (defn graphql [{:keys [cluster] :as client} query & [vars]]
   (let [headers
@@ -148,9 +155,14 @@
     (-> "config/mail-import.dev.edn" slurp read-string make-client))
 
   (def ncr
+    (-> "config/textract.dev.edn" slurp read-string make-client))
+
+  (def ncr
     (-> "config/probebot.dev.edn" slurp read-string make-client))
 
   (oidc-config ncr)
+
+  (fetch-userinfo ncr)
 
   (cache-flush (:cache ncr))
 
