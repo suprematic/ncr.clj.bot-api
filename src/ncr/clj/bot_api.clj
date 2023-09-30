@@ -104,14 +104,19 @@
     (cache-get cache :oidc)
     (let [now (java.time.Instant/now)
           {:keys [token_endpoint]} (oidc-config client)
-          {:keys [client-id username password]} (:auth cfg)
+
+          {:keys [client-id username password scope]
+           :or {scope "openid email profile"}}
+          (:auth cfg)
+
           _ (log/debug "oidc-token: requesting") 
+
           {:keys [access_token expires_in]}
           (http-req token_endpoint nil
             {:method :post
              :form-params {:client_id client-id
                            :grant_type "password"
-                           :scope "openid email profile"
+                           :scope scope
                            :username username
                            :password password}})]
       (log/info "oidc-token: acquired, expires_in:" expires_in)
@@ -126,13 +131,11 @@
       {:oauth-token token})))
 
 (defn graphql [{:keys [cluster] :as client} query & [vars]]
-  (let [headers
-        (cond-> {"authorization" (str "Bearer " (oidc-token client))}
-          cluster (assoc "X-Ncr-Cluster-Slug" cluster))]
-    (http-req (get-in client [:cfg :neckar-url]) "/api/graphql"
-      {:method :post
-       :headers headers
-       :body {:query query :variables vars}})))
+  (http-req (get-in client [:cfg :neckar-url]) "/api/graphql"
+    {:method :post
+     :oauth-token (oidc-token client)
+     :headers (when cluster {"X-Ncr-Cluster-Slug" cluster})
+     :body {:query query :variables vars}}))
 
 (defn transit< [in]
   (let [in (java.io.ByteArrayInputStream. (.getBytes in))]
