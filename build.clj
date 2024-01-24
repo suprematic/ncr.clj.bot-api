@@ -18,6 +18,10 @@
   (println "\nCleaning target...")
   (b/delete {:path "target"}))
 
+(defn run-tests [_]
+  (let [{:keys [exit]} (b/process {:command-args ["clojure" "-X:test"]})]
+    (assert (= exit 0))))
+
 (defn jar [_]
   (println (format "\nWriting pom for v%s ..." version))
   (b/write-pom {:class-dir class-dir
@@ -35,6 +39,7 @@
           :jar-file jar-file}))
 
 (defn ci [opts]
+  (run-tests opts)
   (clean opts)
   (jar opts))
 
