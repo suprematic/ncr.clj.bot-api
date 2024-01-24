@@ -19,7 +19,7 @@
   (b/delete {:path "target"}))
 
 (defn jar [_]
-  (println "\nWriting pom...")
+  (println (format "\nWriting pom for v%s ..." version))
   (b/write-pom {:class-dir class-dir
                 :src-pom "template/pom.xml"
                 :scm {:tag (str "v" version)}
@@ -27,12 +27,16 @@
                 :version version
                 :basis @basis
                 :src-dirs ["src"]})
-  (println "\nCopyin to target...")
+  (println "\nCopying to target...")
   (b/copy-dir {:src-dirs ["src" "resources"]
                :target-dir class-dir})
   (println "\nBuilding jar...")
   (b/jar {:class-dir class-dir
           :jar-file jar-file}))
+
+(defn ci [opts]
+  (clean opts)
+  (jar opts))
 
 (defn deploy [_]
   (println "\nDeploying to clojars...")
