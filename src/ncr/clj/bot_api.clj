@@ -35,9 +35,28 @@
 (defn- cache-flush [cache]
   (reset! cache {}))
 
-(defn- http-req [base path opts]
-  (let [url (.toString (cond-> (java.net.URL. base) path (java.net.URL. path)))
-        opts (cond-> (merge {:method :get :url url :timeout 5000} opts)
+(defmacro with-caching [cache k & body]
+  `(let [cache# ~cache
+         k# ~k
+         line# ~(:line (meta &form))]
+     (or
+       (cache-get cache# k#)
+       (let [_# (log/log! :debug :f ["acquiring %s" k#] {:?line line#}) 
+             now# (java.time.Instant/now)
+             [v# ttl#] (do ~@body)]
+         (log/log! :info :f ["acquired %s, cache ttl: %s" k# ttl#]
+           {:?line line#})
+         (cache-set cache# k# v# (.plusSeconds now# ttl#))
+         v#))))
+
+(defn- url-join [base path]
+  (-> base java.net.URL. (java.net.URL. path) .toString))
+
+(defn- http-req [{:keys [cfg]} url opts]
+  (let [opts (cond-> (merge
+                       {:method :get :url url :timeout 15000}
+                       (:http cfg)
+                       opts)
                (:body opts)
                (->
                  (update :headers merge {"content-type" "application/json"})
@@ -53,85 +72,39 @@
       :else
       (json/parse-string body true))))
 
-(defn ^{:deprecated "0.2"} vault-token
-  "Deprecated"
-  [{:keys [cfg cache] :as client}]
-  (or
-    (cache-get cache :vault-token)
-    (let [_ (log/debug "vault token: authenticating") 
-          now (java.time.Instant/now)
-          vauth (http-req (:vault-url cfg) "/v1/auth/approle/login"
-                {:method :post
-                 :body (select-keys (:role cfg) [:role_id :secret_id])})
-
-          {:keys [lease_duration client_token]}
-          (:auth vauth)]
-      (log/info "vault token: acquired")
-      (cache-set cache :vault-token client_token
-        (.plusSeconds now (/ lease_duration 2)))
-      client_token)))
-
-(defn ^{:deprecated "0.2"} vault-oidc-token
-  "Deprecated"
-  [{:keys [cfg cache] :as client}]
-  (or
-    (cache-get cache :vault-oidc)
-    (let [now (java.time.Instant/now)
-          vtoken (vault-token client)
-          _ (log/debug "vault oidc requesting") 
-          role-path (str "/v1/identity/oidc/token/" (get-in cfg [:role :name]))
-          voidc (http-req (:vault-url cfg) role-path
-                  {:headers {"x-vault-token" vtoken}})
-          {:keys [ttl token]} (:data voidc)]
-      (log/info "vault oidc acquired")
-      (cache-set cache :vault-oidc token (.plusSeconds now (/ ttl 2)))
-      token)))
-
 (defn oidc-config [{:keys [cfg cache] :as client}]
-  (or
-    (cache-get cache :oidc-config)
-    (let [_ (log/debug "oidc-config: requesting") 
-          realm (get-in cfg [:auth :realm])
-          now (java.time.Instant/now)
-          oidc-cfg (http-req realm ".well-known/openid-configuration"
-                     {:method :get})]
-      (log/info "oidc-config: acquired")
-      (cache-set cache :oidc-config oidc-cfg (.plusSeconds now 3600))
-      oidc-cfg)))
+  (with-caching cache :oidc-config
+    [(http-req client
+      (url-join (get-in cfg [:auth :realm]) ".well-known/openid-configuration")
+      {:method :get})
+     3600]))
 
 (defn oidc-token [{:keys [cfg cache] :as client}]
-  (or
-    (cache-get cache :oidc)
-    (let [now (java.time.Instant/now)
-          {:keys [token_endpoint]} (oidc-config client)
+  (with-caching cache :oidc
+    (let [{:keys [token_endpoint]} (oidc-config client)
 
           {:keys [client-id username password scope]
            :or {scope "openid email profile"}}
           (:auth cfg)
 
-          _ (log/debug "oidc-token: requesting") 
-
           {:keys [access_token expires_in]}
-          (http-req token_endpoint nil
+          (http-req client token_endpoint
             {:method :post
              :form-params {:client_id client-id
                            :grant_type "password"
                            :scope scope
                            :username username
                            :password password}})]
-      (log/info "oidc-token: acquired, expires_in:" expires_in)
-      (cache-set cache :oidc access_token
-        (.plusSeconds now (long (* expires_in 4/5))))
-      access_token)))
+      [access_token (long (* expires_in 4/5))])))
 
 (defn fetch-userinfo [{:keys [cfg cache] :as client}]
   (let [{:keys [userinfo_endpoint]} (oidc-config client)
         token (oidc-token client)]
-    (http-req userinfo_endpoint nil
+    (http-req client userinfo_endpoint
       {:oauth-token token})))
 
-(defn graphql [{:keys [cluster] :as client} query & [vars]]
-  (http-req (get-in client [:cfg :neckar-url]) "/api/graphql"
+(defn graphql [{:keys [cluster cfg] :as client} query & [vars]]
+  (http-req client (url-join (:neckar-url cfg) "/api/graphql")
     {:method :post
      :oauth-token (oidc-token client)
      :headers (when cluster {"X-Ncr-Cluster-Slug" cluster})
