@@ -21,7 +21,6 @@
     <url>https://github.com/suprematic/ncr.clj.bot-api</url>
     <connection>scm:git:git://github.com/suprematic/ncr.clj.bot-api.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/suprematic/ncr.clj.bot-api.git</developerConnection>
-    <tag>v0.2.0-SNAPSHOT</tag>
   </scm>
   <dependencies>
     <dependency>
