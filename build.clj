@@ -41,6 +41,6 @@
 (defn deploy [_]
   (println "\nDeploying to clojars...")
   (deploy/deploy
-    {:installer :remoet
+    {:installer :remote
      :artifact (b/resolve-path jar-file)
      :pom-file (b/pom-path {:lib lib :class-dir class-dir})}))
