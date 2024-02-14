@@ -2,10 +2,10 @@
   (:require
     [clojure.string :as str]
     [clojure.java.io :as io]
-    [cognitect.transit :as transit]
     [org.httpkit.client :as http]
     [taoensso.timbre :as log]
-    [cheshire.core :as json]))
+    [cheshire.core :as json]
+    [ncr.clj.transit]))
 
 (def ^:private DEFAULTS
   {:neckar-url "https://app.neckar.io/"})
@@ -80,22 +80,21 @@
      3600]))
 
 (defn oidc-token [{:keys [cfg cache] :as client}]
-  (with-caching cache :oidc
-    (let [{:keys [token_endpoint]} (oidc-config client)
+  (when-let [{:keys [client-id username password scope]
+              :or {scope "openid email profile"}}
+             (:auth cfg)]
+    (with-caching cache :oidc
+      (let [{:keys [token_endpoint]} (oidc-config client)
 
-          {:keys [client-id username password scope]
-           :or {scope "openid email profile"}}
-          (:auth cfg)
-
-          {:keys [access_token expires_in]}
-          (http-req client token_endpoint
-            {:method :post
-             :form-params {:client_id client-id
-                           :grant_type "password"
-                           :scope scope
-                           :username username
-                           :password password}})]
-      [access_token (long (* expires_in 4/5))])))
+            {:keys [access_token expires_in]}
+            (http-req client token_endpoint
+              {:method :post
+               :form-params {:client_id client-id
+                             :grant_type "password"
+                             :scope scope
+                             :username username
+                             :password password}})]
+        [access_token (long (* expires_in 4/5))]))))
 
 (defn fetch-userinfo [{:keys [cfg cache] :as client}]
   (let [{:keys [userinfo_endpoint]} (oidc-config client)
@@ -110,18 +109,11 @@
      :headers (when cluster {"X-Ncr-Cluster-Slug" cluster})
      :body {:query query :variables vars}}))
 
-(defn transit< [in]
-  (let [in (java.io.ByteArrayInputStream. (.getBytes in))]
-    (transit/read (transit/reader in :json))))
+(def transit< ncr.bot.transit/decode)
 
-(defn transit> [in]
-  (let
-    [out (java.io.ByteArrayOutputStream.)
-     writer (transit/writer out :json)]
-    (transit/write writer in)
-    (.toString out)))
+(def transit> ncr.bot.transit/encode)
 
-#_(transit< (transit> [:a :b]))
+#_(transit< (transit> [:a :b (bigdec 123)]))
 
 (comment
   (def ncr
