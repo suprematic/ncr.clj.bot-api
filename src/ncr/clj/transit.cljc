@@ -1,4 +1,4 @@
-(ns ncr.bot.transit
+(ns ncr.clj.transit
   (:require
    [cognitect.transit :as transit]
    [cljc.java-time.local-date]

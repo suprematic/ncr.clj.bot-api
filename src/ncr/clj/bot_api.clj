@@ -5,7 +5,7 @@
     [org.httpkit.client :as http]
     [taoensso.timbre :as log]
     [cheshire.core :as json]
-    [ncr.clj.transit]))
+    [ncr.clj.transit :as transit]))
 
 (def ^:private DEFAULTS
   {:neckar-url "https://app.neckar.io/"})
@@ -109,9 +109,9 @@
      :headers (when cluster {"X-Ncr-Cluster-Slug" cluster})
      :body {:query query :variables vars}}))
 
-(def transit< ncr.bot.transit/decode)
+(def transit< transit/decode)
 
-(def transit> ncr.bot.transit/encode)
+(def transit> transit/encode)
 
 #_(transit< (transit> [:a :b (bigdec 123)]))
 
