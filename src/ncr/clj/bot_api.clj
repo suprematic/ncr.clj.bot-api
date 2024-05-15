@@ -5,7 +5,8 @@
     [org.httpkit.client :as http]
     [taoensso.timbre :as log]
     [cheshire.core :as json]
-    [ncr.clj.transit :as transit]))
+    [ncr.clj.transit :as transit]
+    [oksa.core :as oksa]))
 
 (def ^:private DEFAULTS
   {:neckar-url "https://app.neckar.io/"})
@@ -107,7 +108,9 @@
     {:method :post
      :oauth-token (oidc-token client)
      :headers (when cluster {"X-Ncr-Cluster-Slug" cluster})
-     :body {:query query :variables vars}}))
+     :body
+     {:query (cond-> query (not (string? query)) oksa/gql)
+      :variables vars}}))
 
 (def transit< transit/decode)
 
@@ -145,6 +148,19 @@
 
   (graphql ncr Q_FIND_CLUSTER {:slug "suprematic"})
 
+  (graphql ncr
+    [:oksa/query
+     [[:cluster_find_by_slug
+       {:alias :default
+        :arguments {:slug "suprematic"}}
+       [:id :name]]]])
+
+  (graphql ncr
+    [:oksa/query {:variables [:slug :String]}
+     [[:cluster_find_by_slug
+       {:arguments {:slug :$slug}}
+       [:id :name]]]]
+    {:slug "suprematic"})
   (def ncr-s
     (login-into ncr "suprematic"))
 

@@ -4,7 +4,8 @@
         com.taoensso/timbre {:mvn/version "6.0.4"}
         cheshire/cheshire {:mvn/version "5.11.0"}
         tick/tick {:mvn/version "0.6.2"}
-        com.cognitect/transit-clj {:mvn/version "1.0.329"}}
+        com.cognitect/transit-clj {:mvn/version "1.0.329"}
+        fi.metosin/oksa {:mvn/version "0.1.0"}}
  :aliases
  {:test
   {:extra-paths ["test"]
