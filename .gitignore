@@ -28,3 +28,4 @@
 /target
 /config/*.edn
 /.clojars-credentials
+/scratch.clj

@@ -175,35 +175,25 @@
 
     {:id id}))
 
-#_(upload-file ncr-s (io/file "README.md"))
-
 (comment
   (def ncr
     (-> "config/config.edn" slurp read-string make-client))
 
   (def ncr
-    (-> "config/mail-import.dev.edn" slurp read-string make-client))
-
-  (def ncr
-    (-> "config/textract.dev.edn" slurp read-string make-client))
-
-  (def ncr
-    (-> "config/probebot.dev.edn" slurp read-string make-client))
+    (make-client {:neckar-url "https://snapshot.neckar.suprematic.team/"}))
 
   (oidc-config ncr)
 
   (fetch-userinfo ncr)
 
-  (cache-flush (:cache ncr))
-
   (oidc-token ncr)
 
   (def ^:private Q_FIND_CLUSTER
     "query($slug: String) {
-       default:cluster_find_by_slug(slug: $slug) {
-         id, name
-       }
-     }")
+      default:cluster_find_by_slug(slug: $slug) {
+        id, name
+      }
+    }")
 
   (graphql ncr Q_FIND_CLUSTER {:slug "suprematic"})
 
@@ -220,18 +210,19 @@
        {:arguments {:slug :$slug}}
        [:id :name]]]]
     {:slug "suprematic"})
+
   (def ncr-s
     (login-into ncr "suprematic"))
 
   (def ^:private Q_READ_PROFILE
-    "query($scope: String!) {
-        profile_account_read(scope: $scope)
-     }")
+    "query($scope: String!) { profile_account_read(scope: $scope) }")
 
   (-> ncr-s
-    (graphql Q_READ_PROFILE {:scope "robot/settings"})
+    (graphql Q_READ_PROFILE {:scope "rosettings"})
     (get-in [:data :profile_account_read])
     transit<)
+
+  (upload-file ncr-s (io/file "README.md"))
 
   ;;
   )
