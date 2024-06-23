@@ -1,8 +1,10 @@
 (ns ncr.clj.bot-api
   (:require
+    [clojure.set :as set]
     [clojure.string :as str]
     [clojure.java.io :as io]
     [org.httpkit.client :as http]
+    [babashka.fs :as fs]
     [taoensso.timbre :as log]
     [cheshire.core :as json]
     [ncr.clj.transit :as transit]
@@ -45,7 +47,7 @@
        (let [_# (log/log! :debug :f ["acquiring %s" k#] {:?line line#}) 
              now# (java.time.Instant/now)
              [v# ttl#] (do ~@body)]
-         (log/log! :info :f ["acquired %s, cache ttl: %s" k# ttl#]
+         (log/log! :debug :f ["acquired %s, cache ttl: %s" k# ttl#]
            {:?line line#})
          (cache-set cache# k# v# (.plusSeconds now# ttl#))
          v#))))
@@ -103,7 +105,7 @@
     (http-req client userinfo_endpoint
       {:oauth-token token})))
 
-(defn graphql [{:keys [cluster cfg] :as client} query & [vars]]
+(defn graphql* [{:keys [cluster cfg] :as client} query & [vars]]
   (http-req client (url-join (:neckar-url cfg) "/api/graphql")
     {:method :post
      :oauth-token (oidc-token client)
@@ -112,11 +114,68 @@
      {:query (cond-> query (not (string? query)) oksa/gql)
       :variables vars}}))
 
+(defn graphql [client query & [vars]]
+  (let [{:keys [errors] :as resp} (graphql* client query vars)]
+    (when errors
+      (throw (ex-info "GraphQL Error" {:errors errors})))
+    resp))
+
 (def transit< transit/decode)
 
 (def transit> transit/encode)
 
 #_(transit< (transit> [:a :b (bigdec 123)]))
+
+(defn upload-file [client ^java.io.File file]
+  (assert (instance? java.io.File file))
+  (assert (fs/exists? file))
+  (let
+    [fname (.getName file)
+
+     args
+     {:fileName fname
+      :lastModified (-> file
+                      fs/last-modified-time
+                      .toInstant
+                      .toString
+                      (str/split #"\.")
+                      first)
+      :length (fs/size file)}
+
+     _ (log/debug "uploading" args)
+
+     resp
+     (graphql client
+       [:oksa/mutation
+        [[:upload_create
+          {:alias :default
+           :arguments args}
+          [:id :url :params [:name :value]]]]])
+
+     _ (log/debug " [x] created")
+
+     {:keys [id url params]} (get-in resp [:data :default])
+
+     {:keys [error status body] :as resp1}
+     @(http/request
+        {:url url
+         :method :post
+         :multipart
+         (conj
+           (mapv #(set/rename-keys % {:value :content}) params)
+           {:name "file" :content file :filename fname})})]
+
+    (log/debug " [x] uploaded")
+    (when-not (<= 200 status 299)
+      (throw
+        (ex-info "bad http response" {:code status :body body :error error})))
+
+    (graphql client [:oksa/mutation [[:upload_confirm {:arguments {:id id}}]]])
+    (log/debug " [x] confirmed:" id)
+
+    {:id id}))
+
+#_(upload-file ncr-s (io/file "README.md"))
 
 (comment
   (def ncr
